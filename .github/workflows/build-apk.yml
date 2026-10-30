@@ -21,36 +21,39 @@ jobs:
           distribution: temurin
           java-version: '17'
 
-      - name: Extraer ZIP del proyecto
+      - name: Extraer proyecto ZIP
         run: |
-          echo "Buscando archivos ZIP..."
-          find . -maxdepth 3 -type f -iname "*.zip"
+          echo "Buscando ZIP actualizado..."
+          find . -type f -iname "*.zip" \
+            -not -path "*/.git/*" > /tmp/zip-list.txt
 
           while IFS= read -r archivo; do
             echo "Extrayendo: $archivo"
             unzip -o "$archivo" -d .
-          done < <(find . -maxdepth 3 -type f -iname "*.zip")
+          done < /tmp/zip-list.txt
 
-      - name: Encontrar proyecto Android
+      - name: Localizar proyecto Android
         run: |
-          echo "Buscando settings.gradle..."
-          SETTINGS=$(find . -type f \( -name settings.gradle -o -name settings.gradle.kts \) \
-            -not -path "*/.gradle/*" | head -n 1)
+          SETTINGS=$(find . -type f \
+            \( -name settings.gradle -o -name settings.gradle.kts \) \
+            -not -path "*/.gradle/*" \
+            -not -path "*/.git/*" | head -n 1)
 
           if [ -z "$SETTINGS" ]; then
             echo "ERROR: No se encontro settings.gradle"
+            echo "Contenido del repositorio:"
+            find . -maxdepth 4 -type f | head -200
             exit 1
           fi
 
           PROJECT_DIR=$(dirname "$SETTINGS")
 
-          if [ ! -f "$PROJECT_DIR/app/build.gradle" ] && \
-             [ ! -f "$PROJECT_DIR/app/build.gradle.kts" ]; then
-            echo "ERROR: No se encontro app/build.gradle"
+          if [ ! -d "$PROJECT_DIR/app" ]; then
+            echo "ERROR: No se encontro la carpeta app"
             exit 1
           fi
 
-          echo "Proyecto encontrado en: $PROJECT_DIR"
+          echo "Proyecto encontrado: $PROJECT_DIR"
           echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
 
       - name: Preparar Gradle
@@ -64,6 +67,6 @@ jobs:
       - name: Guardar APK
         uses: actions/upload-artifact@v4
         with:
-          name: Negocio-APK
+          name: Negocio-APK-v2
           path: "**/build/outputs/apk/debug/*.apk"
           if-no-files-found: error
