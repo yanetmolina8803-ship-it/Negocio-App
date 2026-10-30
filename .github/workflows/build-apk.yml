@@ -5,6 +5,7 @@ on:
   push:
     branches:
       - main
+      - master
   workflow_dispatch:
 
 jobs:
@@ -12,61 +13,40 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Descargar repositorio
+      - name: Descargar codigo
         uses: actions/checkout@v4
 
-      - name: Instalar Java 17
+      - name: Configurar Java 17
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '17'
 
-      - name: Extraer proyecto ZIP
-        run: |
-          echo "Buscando ZIP actualizado..."
-          find . -type f -iname "*.zip" \
-            -not -path "*/.git/*" > /tmp/zip-list.txt
-
-          while IFS= read -r archivo; do
-            echo "Extrayendo: $archivo"
-            unzip -o "$archivo" -d .
-          done < /tmp/zip-list.txt
-
-      - name: Localizar proyecto Android
-        run: |
-          SETTINGS=$(find . -type f \
-            \( -name settings.gradle -o -name settings.gradle.kts \) \
-            -not -path "*/.gradle/*" \
-            -not -path "*/.git/*" | head -n 1)
-
-          if [ -z "$SETTINGS" ]; then
-            echo "ERROR: No se encontro settings.gradle"
-            echo "Contenido del repositorio:"
-            find . -maxdepth 4 -type f | head -200
-            exit 1
-          fi
-
-          PROJECT_DIR=$(dirname "$SETTINGS")
-
-          if [ ! -d "$PROJECT_DIR/app" ]; then
-            echo "ERROR: No se encontro la carpeta app"
-            exit 1
-          fi
-
-          echo "Proyecto encontrado: $PROJECT_DIR"
-          echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
-
-      - name: Preparar Gradle
+      - name: Instalar Gradle
         uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+
+      - name: Buscar carpeta del proyecto
+        id: proyecto
+        shell: bash
+        run: |
+          ARCHIVO=$(find . -type f -name settings.gradle -not -path '*/.gradle/*' | head -n 1)
+          if [ -z "$ARCHIVO" ]; then
+            echo "ERROR: No se encontro settings.gradle"
+            exit 1
+          fi
+          CARPETA=$(dirname "$ARCHIVO")
+          echo "carpeta=$CARPETA" >> "$GITHUB_OUTPUT"
+          echo "Proyecto encontrado en: $CARPETA"
 
       - name: Compilar APK
         run: |
-          cd "$PROJECT_DIR"
+          cd "${{ steps.proyecto.outputs.carpeta }}"
           gradle assembleDebug
 
       - name: Guardar APK
         uses: actions/upload-artifact@v4
         with:
-          name: Negocio-APK-v2
-          path: "**/build/outputs/apk/debug/*.apk"
-          if-no-files-found: error
+          name: Negocio-APK
+          path: ${{ steps.proyecto.outputs.carpeta }}/app/build/outputs/apk/debug/app-debug.apk
