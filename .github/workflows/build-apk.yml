@@ -22,23 +22,41 @@ jobs:
           distribution: temurin
           java-version: '17'
 
+      - name: Buscar proyecto Android
+        id: proyecto
+        shell: bash
+        run: |
+          echo "Buscando settings.gradle..."
+
+          ARCHIVO=$(find . -type f \( -name settings.gradle -o -name settings.gradle.kts \) -not -path '*/.gradle/*' | head -n 1)
+
+          if [ -z "$ARCHIVO" ]; then
+            echo "No se encontro el proyecto. Buscando archivos ZIP..."
+            mkdir -p "$RUNNER_TEMP/proyecto"
+
+            while IFS= read -r ZIP; do
+              echo "Extrayendo: $ZIP"
+              unzip -oq "$ZIP" -d "$RUNNER_TEMP/proyecto"
+            done < <(find . -type f -iname '*.zip')
+
+            ARCHIVO=$(find "$RUNNER_TEMP/proyecto" -type f \( -name settings.gradle -o -name settings.gradle.kts \) -not -path '*/.gradle/*' | head -n 1)
+          fi
+
+          if [ -z "$ARCHIVO" ]; then
+            echo "ERROR: No se encontro settings.gradle ni dentro de los ZIP."
+            echo "Archivos disponibles:"
+            find . -maxdepth 3 -type f | head -n 80
+            exit 1
+          fi
+
+          CARPETA=$(dirname "$ARCHIVO")
+          echo "Proyecto encontrado en: $CARPETA"
+          echo "carpeta=$CARPETA" >> "$GITHUB_OUTPUT"
+
       - name: Instalar Gradle
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.9'
-
-      - name: Buscar carpeta del proyecto
-        id: proyecto
-        shell: bash
-        run: |
-          ARCHIVO=$(find . -type f -name settings.gradle -not -path '*/.gradle/*' | head -n 1)
-          if [ -z "$ARCHIVO" ]; then
-            echo "ERROR: No se encontro settings.gradle"
-            exit 1
-          fi
-          CARPETA=$(dirname "$ARCHIVO")
-          echo "carpeta=$CARPETA" >> "$GITHUB_OUTPUT"
-          echo "Proyecto encontrado en: $CARPETA"
 
       - name: Compilar APK
         run: |
@@ -50,3 +68,4 @@ jobs:
         with:
           name: Negocio-APK
           path: ${{ steps.proyecto.outputs.carpeta }}/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
