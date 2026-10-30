@@ -12,7 +12,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Descargar codigo
+      - name: Descargar repositorio
         uses: actions/checkout@v4
 
       - name: Instalar Java 17
@@ -21,32 +21,43 @@ jobs:
           distribution: temurin
           java-version: '17'
 
+      - name: Extraer ZIP del proyecto
+        run: |
+          echo "Buscando archivos ZIP..."
+          find . -maxdepth 3 -type f -iname "*.zip"
+
+          while IFS= read -r archivo; do
+            echo "Extrayendo: $archivo"
+            unzip -o "$archivo" -d .
+          done < <(find . -maxdepth 3 -type f -iname "*.zip")
+
+      - name: Encontrar proyecto Android
+        run: |
+          echo "Buscando settings.gradle..."
+          SETTINGS=$(find . -type f \( -name settings.gradle -o -name settings.gradle.kts \) \
+            -not -path "*/.gradle/*" | head -n 1)
+
+          if [ -z "$SETTINGS" ]; then
+            echo "ERROR: No se encontro settings.gradle"
+            exit 1
+          fi
+
+          PROJECT_DIR=$(dirname "$SETTINGS")
+
+          if [ ! -f "$PROJECT_DIR/app/build.gradle" ] && \
+             [ ! -f "$PROJECT_DIR/app/build.gradle.kts" ]; then
+            echo "ERROR: No se encontro app/build.gradle"
+            exit 1
+          fi
+
+          echo "Proyecto encontrado en: $PROJECT_DIR"
+          echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
+
       - name: Preparar Gradle
         uses: gradle/actions/setup-gradle@v4
 
-      - name: Buscar proyecto Android
-        run: |
-          echo "Buscando settings.gradle..."
-          find . -name settings.gradle -o -name settings.gradle.kts
-
-          if [ -f settings.gradle ]; then
-            echo "Proyecto encontrado en la raiz"
-          else
-            SETTINGS=$(find . -name settings.gradle -o -name settings.gradle.kts | head -n 1)
-
-            if [ -z "$SETTINGS" ]; then
-              echo "ERROR: No se encontro settings.gradle"
-              exit 1
-            fi
-
-            PROJECT_DIR=$(dirname "$SETTINGS")
-            echo "Proyecto encontrado en: $PROJECT_DIR"
-            echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
-          fi
-
       - name: Compilar APK
         run: |
-          PROJECT_DIR="${PROJECT_DIR:-.}"
           cd "$PROJECT_DIR"
           gradle assembleDebug
 
@@ -54,6 +65,5 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: Negocio-APK
-          path: |
-            **/build/outputs/apk/debug/*.apk
+          path: "**/build/outputs/apk/debug/*.apk"
           if-no-files-found: error
